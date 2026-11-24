@@ -1,0 +1,40 @@
+# runtime data (never commit: may contain paths/models/logs from your machine)
+sandbox/
+exports/
+backups/
+logs/
+sandbox_registry.json
+old/
+
+# test output
+tests/**/results/
+*.log
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+
+# models / drawings / office files that tests may drop
+*.edb
+*.EDB
+*.sdb
+*.SDB
+*.fdb
+*.FDB
+*.dwg
+*.bak
+*.xlsx
+*.docx
+*.pptx
+
+# editors / os
+.vscode/
+.idea/
+Thumbs.db
+.claude/

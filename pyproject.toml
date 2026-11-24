@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "structural-cad-mcp"
+version = "0.1.0"
+description = "MCP servers that let AI assistants drive ETABS, SAP2000, SAFE and AutoCAD through their COM APIs - with a safety guard, crash recovery and a plugin architecture."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+keywords = ["mcp", "model-context-protocol", "etabs", "sap2000", "safe", "autocad", "structural-engineering", "csi", "com"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = [
+  "mcp>=2.0",
+  "comtypes>=1.4; sys_platform == 'win32'",
+  "pywin32>=306; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["mcpkit", "apps", "apps.csi", "apps.autocad", "apps.office", "apps._template"]
+py-modules = ["run"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
