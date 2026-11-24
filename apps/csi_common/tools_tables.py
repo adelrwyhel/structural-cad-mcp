@@ -13,7 +13,12 @@ from .constants import COMBO_TYPES, LOAD_TYPES, MAT_TYPES, UNITS
 @tool()
 def list_tables(contains: str = "") -> list:
     """Database table keys (optionally filtered by text), e.g. contains='Drift' or 'Design'."""
-    r = A.out(A.sap().DatabaseTables.GetAvailableTables(), "GetAvailableTables")
+    m = A.sap()
+    if not A.has_tables(m):
+        if A.legacy_keys:
+            return [k for k in A.legacy_keys if not contains or contains.lower() in k.lower()]
+        raise RuntimeError(f"{A.title} {m.GetVersion()[0]} has no database-tables API.")
+    r = A.out(m.DatabaseTables.GetAvailableTables(), "GetAvailableTables")
     c = contains.lower()
     return [k for k in r[1] if not c or c in k.lower()]
 
@@ -59,6 +64,8 @@ def set_table(table_key: str, columns: list, rows: list) -> dict:
     parameters, response-spectrum functions...). `rows` is a list of lists of strings matching `columns`.
     Use get_table first to see the exact column keys. Applies the edit and returns the import log."""
     m = A.sap()
+    if not A.has_tables(m):
+        raise RuntimeError(f"{A.title} {m.GetVersion()[0]} has no database-tables API, so tables cannot be edited.")
     dt = m.DatabaseTables
     flat = [str(v) for r in rows for v in r]
     if any(len(r) != len(columns) for r in rows):
@@ -118,13 +125,6 @@ def frame_forces(where: dict = None, max_rows: int = 200, offset: int = 0) -> di
 
 
 @tool()
-def story_forces(where: dict = None, max_rows: int = 200, offset: int = 0) -> dict:
-    """ETABS: story forces."""
-    A.etabs_only("story_forces")
-    return _result("Story Forces", where, max_rows, offset)
-
-
-@tool()
 def modal_summary(max_modes: int = 12) -> dict:
     """Periods of the first modes and the mode at which 90% mass participation is reached (ETABS/SAP2000)."""
     if A.prog == "safe":
@@ -148,29 +148,6 @@ def modal_summary(max_modes: int = 12) -> dict:
             if s in mode and mode[s] >= 0.9 and s not in reach:
                 reach[s] = mode["mode"]
     return {"modes": modes[:max_modes], "total_modes": len(modes), "mode_reaching_90pct": reach}
-
-
-@tool()
-def drift_check(limit: float = 0.02, case_contains: str = "") -> dict:
-    """ETABS: maximum story drift ratio per direction and the stories that exceed `limit` (default 2%)."""
-    A.etabs_only("drift_check")
-    cols, rows = A.fetch(A.sap(), "Story Drifts")
-    ci = {c: i for i, c in enumerate(cols)}
-    best, exceed = {}, []
-    for r in rows:
-        case = r[ci["OutputCase"]]
-        if case_contains and case_contains.lower() not in case.lower():
-            continue
-        d = abs(A.num(r[ci["Drift"]]))
-        direction = r[ci["Direction"]]
-        rec = {"story": r[ci["Story"]], "case": case, "direction": direction, "drift": d}
-        if d > best.get(direction, {}).get("drift", -1):
-            best[direction] = rec
-        if d > limit:
-            exceed.append(rec)
-    exceed.sort(key=lambda x: -x["drift"])
-    return {"limit": limit, "max_per_direction": best, "exceeding": exceed[:50], "n_exceeding": len(exceed),
-            "ok": not exceed}
 
 
 @tool(timeout=300)

@@ -20,7 +20,7 @@ def blocked(r):
     return isinstance(r, dict) and r.get("error") and "BLOCKED" in r.get("message", "")
 
 
-with Session("csi", "etabs") as s:
+with Session("etabs") as s:
     c = s.call
     p = c("ping"); check("ping program_running + writable", p.get("program_running") and p.get("writable"), p)
     r = c("new_blank_model", units="kN_m_C"); check("new_blank_model", good(r), r)
@@ -72,12 +72,14 @@ with Session("csi", "etabs") as s:
     check("refresh_view", good(c("refresh_view")))
 
     # ---------- GUARD: simulate the user's real model (a file outside the sandbox) ----------
+    # Simulate the user's real model: a saved model WITHOUT the in-file sandbox marker, outside the sandbox folder.
+    import comtypes.client
     tmp = tempfile.mkdtemp(prefix="userwork_")
-    src = "mcp_live_test.edb"
     user_copy = os.path.join(tmp, "REAL_PROJECT.EDB")
-    shutil.copy2(os.path.join(os.path.dirname(saved), src), user_copy)  # saved = sandbox path
+    _m = comtypes.client.GetActiveObject("CSI.ETABS.API.ETABSObject").SapModel
+    _m.SetModelIsLocked(False); _m.GroupDef.Delete("__MCP_SANDBOX__"); _m.File.Save(user_copy)
     h0 = os.path.getsize(user_copy), os.path.getmtime(user_copy)
-    r = c("open_model", path=user_copy); check("open_model(user file) allowed from sandbox model", good(r), r)
+    check("simulated user model is open (no marker)", os.path.normcase(os.path.splitext(str(c("status").get("file")))[0]) == os.path.normcase(os.path.splitext(user_copy)[0]), c("status"))
     check("ping says read-only", c("ping").get("writable") is False, c("ping"))
     check("READ works on user file", good(c("model_summary")) and good(c("list_tables", contains="Story")))
     for tool, args in [("add_frame", dict(x1=0, y1=0, z1=0, x2=1, y2=1, z2=1)), ("add_load_pattern", dict(name="HACK")),

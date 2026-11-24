@@ -20,6 +20,7 @@ def ping() -> dict:
     except Exception as e:
         return {**info, "program_running": False, "error": str(e)}
     info.update({"program_running": True, "version": m.GetVersion()[0], "file": A.filename(m) or "(untitled)"})
+    info.update(A.support_info())
     try:
         A.guard("ping-check")
         info["writable"] = True
@@ -79,19 +80,6 @@ def new_blank_model(units: str = "kN_m_C") -> str:
     _new_model(m, UNITS[units], lambda: m.File.NewBlank(), "NewBlank")
     A.ours_untitled = True
     return "new blank model (untitled, sandbox-safe). Save it with save_model('name') before running analysis."
-
-
-@tool(write=True, timeout=180)
-def new_grid_model(stories: int = 3, story_height: float = 3.0, bottom_height: float = 3.0, lines_x: int = 3,
-                   lines_y: int = 3, spacing_x: float = 6.0, spacing_y: float = 6.0, units: str = "kN_m_C") -> str:
-    """ETABS: start a NEW model with a regular grid and stories."""
-    A.etabs_only("new_grid_model")
-    A.guard("new_grid_model", replacing=True)
-    m = A.sap()
-    _new_model(m, UNITS[units], lambda: m.File.NewGridOnly(stories, story_height, bottom_height, lines_x, lines_y,
-                                                          spacing_x, spacing_y), "NewGridOnly")
-    A.ours_untitled = True
-    return "new grid model"
 
 
 @tool(write=True, timeout=300)

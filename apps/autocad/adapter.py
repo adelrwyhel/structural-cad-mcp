@@ -1,4 +1,5 @@
 """AutoCAD adapter (COM automation through pywin32, early-bound). Tool modules use the proxy `A`."""
+import os
 import re
 
 import pythoncom
@@ -32,6 +33,33 @@ _DENY = re.compile(
     r"vl-mkdir|dos_|vlax-create-object)($|[\s)\"'])")
 
 
+def progid_for_year(year: str) -> str:
+    """Find the versioned ProgID (AutoCAD.Application.NN) whose registered server lives in 'AutoCAD <year>'.
+    Discovered from the registry instead of hard-coded, because Autodesk reuses/renumbers these keys across releases."""
+    import winreg
+    hk = winreg.HKEY_CLASSES_ROOT
+    best, i = None, 0
+    while True:
+        try:
+            name = winreg.EnumKey(hk, i)
+        except OSError:
+            break
+        i += 1
+        if not name.startswith("AutoCAD.Application."):
+            continue
+        try:
+            with winreg.OpenKey(hk, name + "\\CLSID") as k:
+                clsid = winreg.QueryValue(k, "")
+            with winreg.OpenKey(hk, f"CLSID\\{clsid}\\LocalServer32") as k2:
+                path = winreg.QueryValue(k2, "")
+        except OSError:
+            continue
+        exe = path.split(" /")[0].strip().strip(chr(34))
+        if f"AutoCAD {year}" in path and os.path.isfile(exe):   # ignore leftovers of uninstalled releases
+            best = name
+    return best
+
+
 def pt(*xyz):
     v = [float(x) for x in xyz] + [0.0] * (3 - len(xyz))
     return VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_R8, v)
@@ -47,9 +75,23 @@ class AutoCadApp(App):
     modules = MODULES
     edit_exts = (".dwg",)
 
-    def __init__(self):
+    verified_versions = ("25.",)     # AutoCAD 2026 (25.1) passed the live suite; every other version is UNVERIFIED
+
+    def __init__(self, year=None):
         self._app = None
+        self.year = year             # e.g. "2014": attach to that installed release instead of "whatever is running"
         self.ours_docs = set()   # names of unsaved drawings created by these tools
+
+    def progid(self) -> str:
+        if not self.year:
+            return "AutoCAD.Application"
+        pid = progid_for_year(self.year)
+        if not pid:
+            raise RuntimeError(f"AutoCAD {self.year} is not installed/registered on this PC")
+        return pid
+
+    def version_string(self) -> str:
+        return str(self.app().Version)
 
     # ---- connection ----------------------------------------------------
     def reset(self):
@@ -63,7 +105,7 @@ class AutoCadApp(App):
             except Exception:
                 self._app = None
         try:
-            obj = win32com.client.GetActiveObject("AutoCAD.Application")
+            obj = win32com.client.GetActiveObject(self.progid())
         except Exception as e:
             raise RuntimeError(f"AutoCAD is not running or COM attach failed: {core.friendly(e)}")
         try:  # early binding (typelib) is far more reliable than late binding for AutoCAD

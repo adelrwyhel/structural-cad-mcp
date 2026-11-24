@@ -66,6 +66,12 @@ with Session("autocad") as s:
     r = c("plot_pdf", filename="t_acad"); check("plot_pdf", good(r) and str(r).endswith(".pdf"), r)
 
     # ---- guard: simulate the user's real drawing (a DWG outside the sandbox), opened read-only
+    # Simulate the user's real drawing: a saved DWG WITHOUT the in-file sandbox marker layer, outside the sandbox folder.
+    import win32com.client
+    _d = win32com.client.GetActiveObject("AutoCAD.Application").ActiveDocument
+    _d.ActiveLayer = _d.Layers.Item("0")
+    _d.Layers.Item("__MCP_SANDBOX__").Delete()
+    _d.Save()
     tmp = tempfile.mkdtemp(prefix="userwork_")
     user_copy = os.path.join(tmp, "REAL_PLAN.dwg")
     shutil.copy2(saved, user_copy)

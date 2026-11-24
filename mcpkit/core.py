@@ -55,12 +55,14 @@ class GuardError(RuntimeError):
 
 
 # ================================================================== tool marker (decoupled from any server)
-def tool(write: bool = False, timeout: float = 120.0):
+def tool(write: bool = False, timeout: float = 120.0, unverified: bool = False):
     """Mark a function as an MCP tool. The server registers it when the module is loaded.
     write=True  -> the app's guard runs first (blocked on non-sandbox documents).
-    timeout     -> seconds before the call is abandoned (the worker is replaced)."""
+    timeout     -> seconds before the call is abandoned (the worker is replaced).
+    unverified  -> never tested on a real installation (e.g. older program versions): the description is prefixed
+                   with [UNVERIFIED] so the AI and the user treat its output with caution."""
     def deco(fn):
-        fn._mcp = {"write": write, "timeout": timeout}
+        fn._mcp = {"write": write, "timeout": timeout, "unverified": unverified}
         return fn
     return deco
 
@@ -295,6 +297,24 @@ class App:
         return {}
 
     edit_exts = ()        # file extensions allow_edit may grant (lowercase, with dot)
+    verified_versions = ()   # version-string PREFIXES that passed the live test suite, e.g. ("21.",)
+
+    def version_string(self) -> str:
+        """Version of the connected program ("" if not connected)."""
+        return ""
+
+    def support_info(self) -> dict:
+        """Is the connected program version one we tested? Used by ping()."""
+        try:
+            v = self.version_string()
+        except Exception:
+            v = ""
+        if not v:
+            return {}
+        ok = any(v.startswith(p) for p in self.verified_versions)
+        return {"program_version": v, "support": "verified" if ok else "UNVERIFIED",
+                "verified_versions": list(self.verified_versions),
+                **({} if ok else {"warning": "this version was not tested; every result needs independent checking"})}
 
     def current_path(self) -> str:
         """Path of the active saved document ('' if none/unsaved). Used by allow_edit()."""
@@ -404,6 +424,8 @@ class Server:
                     self.log.error("FAIL %s: %s %s", name, msg, argtxt)
                     raise ToolError(f"{name} failed: {msg}") from None
 
+        if opts.get("unverified"):
+            inner.__doc__ = "[UNVERIFIED - not tested on a real installation; treat results with caution] " + (fn.__doc__ or "")
         self.mcp.tool()(inner)
         self.tools[name] = opts
 
@@ -431,7 +453,8 @@ class Server:
             return {"server": srv.name, "uptime_s": round(time.time() - srv.started),
                     "calls": srv.calls, "failures": srv.failures,
                     "supervisor_restarts": int(os.environ.get("MCP_RESTARTS", "0")),
-                    "modules": srv.modules, "tool_count": len(srv.tools), "log": str(LOGS / f"{srv.name}.log"),
+                    "modules": srv.modules, "tool_count": len(srv.tools),
+                    "unverified_tools": sorted(k for k, v in srv.tools.items() if v.get("unverified")), "log": str(LOGS / f"{srv.name}.log"),
                     "sandbox": str(SANDBOX), "allow_edit_existing": ALLOW_EDIT_EXISTING}
 
         @tool()

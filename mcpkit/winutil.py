@@ -4,17 +4,10 @@ import subprocess
 
 def pids_of(image: str) -> set:
     """PIDs of running processes with this image name (e.g. 'SAP2000.exe')."""
-    out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {image}", "/FO", "CSV", "/NH"],
+    out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                          f"(Get-CimInstance Win32_Process -Filter \"Name='{image}'\" | Where-Object {{ $_.ThreadCount -gt 0 }}).ProcessId"],
                          capture_output=True, text=True).stdout
-    pids = set()
-    for line in out.splitlines():
-        parts = [p.strip('"') for p in line.split('","')]
-        if len(parts) > 1 and parts[0].lower() == image.lower():
-            try:
-                pids.add(int(parts[1].strip('"')))
-            except ValueError:
-                pass
-    return pids
+    return {int(x) for x in out.split() if x.isdigit()}
 
 
 def program_dialogs(image: str) -> list:

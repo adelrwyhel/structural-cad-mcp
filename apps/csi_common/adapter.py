@@ -16,21 +16,23 @@ VARIANTS = {
 }
 
 MODULES = (
-    "apps.csi.tools_session",
-    "apps.csi.tools_tables",
-    "apps.csi.tools_loads",
-    "apps.csi.tools_model",
-    "apps.csi.tools_etabs",
-    "apps.csi.tools_analysis",
+    "apps.csi_common.tools_session",
+    "apps.csi_common.tools_tables",
+    "apps.csi_common.tools_loads",
+    "apps.csi_common.tools_model",
+    "apps.csi_common.tools_analysis",
 )
 
 
 class CsiApp(App):
-    def __init__(self, prog: str):
+    def __init__(self, prog: str, extra_modules=(), verified=(), legacy_fetch=None, legacy_keys=()):
         v = VARIANTS[prog]
         self.prog, self.name, self.title = prog, prog, v["title"]
         self.exts, self.progids = v["exts"], v["progids"]
-        self.modules = MODULES
+        self.modules = MODULES + tuple(extra_modules)     # shared tools + this program's own tools
+        self.verified_versions = tuple(verified)
+        self.legacy_fetch = legacy_fetch                 # fallback result reader for versions without DatabaseTables
+        self.legacy_keys = tuple(legacy_keys)
         self.edit_exts = self.exts
         self.ours_untitled = False   # current untitled model was created by these tools
         self._obj = None
@@ -105,6 +107,18 @@ class CsiApp(App):
         if self.prog != "etabs":
             raise RuntimeError(f"{what} is available for ETABS only (this server is {self.title}).")
 
+    def version_string(self) -> str:
+        return self.sap().GetVersion()[0]
+
+    @staticmethod
+    def has_tables(m) -> bool:
+        """Older versions (e.g. SAP2000 20) have no DatabaseTables object."""
+        try:
+            m.DatabaseTables
+            return True
+        except Exception:
+            return False
+
     @staticmethod
     def num(x, default=0.0):
         try:
@@ -125,6 +139,12 @@ class CsiApp(App):
 
     def fetch(self, m, key, group="All", try_select=True):
         """Return (columns, rows) of a database table; rows are lists of strings."""
+        if not self.has_tables(m):
+            if self.legacy_fetch:
+                self.select_all_outputs(m)
+                return self.legacy_fetch(m, key)
+            raise RuntimeError(f"{self.title} {m.GetVersion()[0]} has no database-tables API and no legacy reader is "
+                               f"available for it.")
         dt = m.DatabaseTables
         r = dt.GetTableForDisplayArray(key, [], group, 0, [], 0, [])
         if r[-1] != 0 and try_select:

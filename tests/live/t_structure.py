@@ -1,8 +1,8 @@
-﻿"""Structure + crash-recovery test (needs NO CAD program running)."""
+"""Structure + crash-recovery test (needs NO CAD program running)."""
 import sys, time, subprocess, json
 from mcp_client import Session
 
-app = sys.argv[1:] or ["csi", "etabs"]
+app = sys.argv[1:] or ["etabs"]
 with Session(*app) as s:
     names = s.tools()
     print("tools:", len(names))

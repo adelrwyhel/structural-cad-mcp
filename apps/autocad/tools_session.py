@@ -15,6 +15,8 @@ def ping() -> dict:
     info = {"server": "autocad", "sandbox_folder": str(core.SANDBOX), "log": str(core.LOGS / "autocad.log"),
             "allow_edit_existing_env": core.ALLOW_EDIT_EXISTING}
     info.update(A.info())
+    if info.get("program_running"):
+        info.update(A.support_info())
     if info.get("program_running") and info.get("drawings_open"):
         try:
             A.guard("ping-check")
@@ -142,3 +144,62 @@ def regen() -> str:
     """Regenerate the active drawing."""
     A.doc().Regen(1)
     return "ok"
+
+
+# ---- installations / launching (any AutoCAD release; only 2026 is verified)
+import glob
+import subprocess
+import time
+
+
+def _installs() -> list:
+    out = []
+    for root in (r"C:\Program Files\Autodesk", r"C:\Program Files (x86)\Autodesk"):
+        for d in glob.glob(os.path.join(root, "AutoCAD 20*")):
+            exe = os.path.join(d, "acad.exe")
+            if os.path.isfile(exe):
+                year = os.path.basename(d).split()[-1]
+                out.append({"year": year, "exe": exe, "verified": year == "2026"})
+    return sorted(out, key=lambda x: x["year"])
+
+
+@tool()
+def list_installations() -> dict:
+    """AutoCAD releases installed on this PC (2026 is the only verified one) and the running version, if any."""
+    running = None
+    try:
+        running = A.app().Version
+    except Exception:
+        pass
+    return {"installed": _installs(), "running_version": running, "server_year": A.year or "(any running)"}
+
+
+@tool(timeout=300, unverified=True)
+def launch_program(year: str = "", wait_seconds: int = 150) -> dict:
+    """Start an installed AutoCAD release (e.g. '2026', '2014') and wait until its COM interface answers.
+    A running AutoCAD is never closed."""
+    from mcpkit import winutil
+    installs = _installs()
+    if not installs:
+        raise RuntimeError("no AutoCAD installation found in the standard folders")
+    target = next((i for i in installs if i["year"] == year), None) if year else installs[-1]
+    if not target:
+        raise RuntimeError(f"AutoCAD {year} is not installed. Installed: {[i['year'] for i in installs]}")
+    try:
+        return {"already_running": True, "version": A.app().Version}
+    except Exception:
+        pass
+    subprocess.Popen([target["exe"]], cwd=os.path.dirname(target["exe"]), creationflags=0x00000008 | 0x00000200)
+    deadline = time.time() + max(20, min(wait_seconds, 280))
+    while time.time() < deadline:
+        time.sleep(4)
+        lic = winutil.license_problem("acad.exe")
+        if lic:
+            raise RuntimeError(f"AutoCAD shows a license problem: \"{lic[:300]}\"")
+        try:
+            v = A.app().Version
+            time.sleep(10)
+            return {"launched": target["exe"], "version": v}
+        except Exception:
+            continue
+    raise RuntimeError(f"started {target['exe']} but its COM interface did not answer within {wait_seconds}s")

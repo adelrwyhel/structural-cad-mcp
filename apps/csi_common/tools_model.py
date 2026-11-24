@@ -212,9 +212,3 @@ def add_slab_section(name: str, material: str, thickness: float) -> str:
     return name
 
 
-@tool(write=True)
-def add_wall_section(name: str, material: str, thickness: float) -> str:
-    """ETABS: define a thin shell wall section."""
-    A.etabs_only("add_wall_section")
-    A.chk(A.sap().PropArea.SetWall(name, 0, 1, material, thickness), "PropArea.SetWall")
-    return name

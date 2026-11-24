@@ -21,7 +21,7 @@ def blocked(r):
 
 
 z = 0 if prog == "safe" else 3
-with Session("csi", prog) as s:
+with Session(prog) as s:
     c = s.call
     p = c("ping"); check("ping running+writable", p.get("program_running") and p.get("writable"), p)
     check("new_blank_model", good(c("new_blank_model", units="kN_m_C")))
@@ -63,11 +63,15 @@ with Session("csi", prog) as s:
 
     # ---- guard: simulate the user's real model outside the sandbox
     ext = {"sap2000": ".sdb", "safe": ".fdb"}[prog]
+    # Simulate the user's real model: a saved model WITHOUT the in-file sandbox marker, outside the sandbox folder.
+    import comtypes.client
     tmp = tempfile.mkdtemp(prefix="userwork_")
     user_copy = os.path.join(tmp, "REAL_PROJECT" + ext)
-    shutil.copy2(saved, user_copy)
+    _pid = {"sap2000": "CSI.SAP2000.API.SapObject", "safe": "CSI.SAFE.API.ETABSObject"}[prog]
+    _m = comtypes.client.GetActiveObject(_pid).SapModel
+    _m.SetModelIsLocked(False); _m.GroupDef.Delete("__MCP_SANDBOX__"); _m.File.Save(user_copy)
     h0 = os.path.getsize(user_copy), os.path.getmtime(user_copy)
-    check("open_model(user file)", good(c("open_model", path=user_copy)))
+    check("simulated user model is open (no marker)", os.path.normcase(os.path.splitext(str(c("status").get("file")))[0]) == os.path.normcase(os.path.splitext(user_copy)[0]), c("status"))
     check("ping says read-only", c("ping").get("writable") is False)
     check("READ works on user file", good(c("model_summary")))
     for tool, args in [("add_frame", dict(x1=0, y1=0, z1=0, x2=1, y2=1, z2=0)), ("add_load_pattern", dict(name="HACK")),

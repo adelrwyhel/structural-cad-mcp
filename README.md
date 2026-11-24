@@ -13,12 +13,12 @@ Ask your assistant things like:
 
 | Server | Programs / versions | Tools |
 |---|---|---|
-| `etabs` | ETABS 21 | ~65: model, stories, diaphragms, sections, loads, combos, tables, results, drift/modal checks, design, reports |
+| `etabs` | ETABS 21, 22 | ~65: model, stories, diaphragms, sections, loads, combos, tables, results, drift/modal checks, design, reports |
 | `sap2000` | SAP2000 26 | ~60 |
 | `safe` | SAFE 21 | ~55 |
 | `autocad` | AutoCAD 2026 (COM) | ~50: layers, drawing, query, edit, blocks, hatch, PDF plot |
 
-Every server also provides `ping`, `server_info`, `restart_server`, `allow_edit`, `revoke_edit`, `edit_status`. (`apps/office` - Excel/Word/PowerPoint - is included as an experimental extra.)
+Each program is its own MCP server with its own tools (`apps/etabs`, `apps/sap2000`, `apps/safe`, `apps/autocad`); the three CSI programs share a base library (`apps/csi_common`). Every server also provides `ping`, `server_info`, `restart_server`, `allow_edit`, `revoke_edit`, `edit_status`. (`apps/office` - Excel/Word/PowerPoint - is included as an experimental extra.)
 
 ## Supported versions
 
@@ -26,13 +26,19 @@ Only versions that were **actually tested** are supported. **Older versions are 
 
 | Program | Supported (tested) | Not supported |
 |---|---|---|
-| ETABS | **21** (v21.2.0) | 22 (not verified yet), 2016, 19, 20 |
+| ETABS | **21** (21.2.0), **22** (22.5.1) | 2016, 19, 20 |
 | SAP2000 | **26** (v26.2.0) | 25 (not verified), 20 and older |
 | SAFE | **21** (v21.2.0) | 2016 and older |
 | AutoCAD | **2026** | anything older |
 
-Notes: SAP2000 20 has no `DatabaseTables` API, so the table/result tools cannot work there. Every tool listed passes the live suite in `tests/live` (ETABS 61, SAP2000 47, SAFE 45, AutoCAD 61 checks, including the safety-guard tests). Contributions that verify or add other versions are welcome (see `tests/live/run_matrix.py`).
+Notes: SAP2000 20 has no `DatabaseTables` API, so the table/result tools cannot work there. Every tool listed passes the live suite in `tests/live` (ETABS 21: 61 checks, ETABS 22: 61, SAP2000 26: 47, SAFE 21: 45, AutoCAD 2026: 61 - including the safety-guard tests). Contributions that verify or add other versions are welcome (see `tests/live/run_matrix.py`).
 
+### Unverified versions and tools
+Anything not in the table is **UNVERIFIED**: it may work, but nobody tested it on a real installation.
+* `ping` reports `"support": "verified"` or `"UNVERIFIED"` (with a warning) for the connected program version.
+* Tools that were written from the vendor documentation but never run on a real installation (for example SAP2000 < 21 result readers, extra ETABS/SAFE table readers, `launch_program`) are published with a **`[UNVERIFIED]`** prefix in their description, and `server_info` lists them.
+* AutoCAD releases other than 2026: start the server as `run.py autocad 2014` (the year selects that installed release; the COM ProgID is discovered from the registry, not guessed). Treat everything on those releases as unverified.
+* Licensing is checked too: if a program shows a "no license" dialog, `launch_program` reports it instead of hanging.
 ## Safety model (important)
 1. **Read tools work on any open model/drawing.** They never save, unlock or "refresh dirty" the file.
 2. **Write tools only act on documents the tools created** (inside `sandbox/`) or on empty new ones. On anything else they return `BLOCKED ...` *before* touching it.
@@ -59,9 +65,9 @@ Register with Claude Code (use the absolute path of your python and the repo):
 ```powershell
 $py  = (Get-Command python).Source
 $dir = (Get-Location).Path
-claude mcp add --scope user etabs   -- $py "$dir\mcpkit\supervisor.py" "$dir\run.py" csi etabs
-claude mcp add --scope user sap2000 -- $py "$dir\mcpkit\supervisor.py" "$dir\run.py" csi sap2000
-claude mcp add --scope user safe    -- $py "$dir\mcpkit\supervisor.py" "$dir\run.py" csi safe
+claude mcp add --scope user etabs   -- $py "$dir\mcpkit\supervisor.py" "$dir\run.py" etabs
+claude mcp add --scope user sap2000 -- $py "$dir\mcpkit\supervisor.py" "$dir\run.py" sap2000
+claude mcp add --scope user safe    -- $py "$dir\mcpkit\supervisor.py" "$dir\run.py" safe
 claude mcp add --scope user autocad -- $py "$dir\mcpkit\supervisor.py" "$dir\run.py" autocad
 ```
 Other MCP clients: the same command line as a stdio server.
@@ -71,9 +77,11 @@ Helpers: `list_installations` shows installed versions, `launch_program(version)
 
 ## Architecture
 ```
-run.py                      entry: run.py csi etabs|sap2000|safe | run.py autocad | run.py office excel|word|powerpoint
+run.py                      entry: run.py etabs | sap2000 | safe | autocad [year] | office excel|word|powerpoint
 mcpkit/core.py              engine: plugin loader, COM worker, timeouts, guard, grants, clipping, recovery
 mcpkit/supervisor.py        crash-proof launcher
+apps/etabs, sap2000, safe, autocad   one self-contained MCP server (plugin) per program
+apps/csi_common/            code shared by the three CSI programs (connection, guard, common tools)
 apps/<app>/adapter.py       connection + guard hooks for the program
 apps/<app>/tools_*.py       tools: any function decorated with @tool() is registered automatically
 apps/_template/             copy to add a new application

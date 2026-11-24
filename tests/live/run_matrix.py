@@ -30,7 +30,10 @@ def ps(cmd):
 
 
 def running(image):
-    return [int(x) for x in ps(f"(Get-Process -Name {image[:-4]} -ErrorAction SilentlyContinue).Id").split()]
+    """PIDs of LIVE processes (ThreadCount > 0). Exited processes whose handle is still held elsewhere show up in
+    Get-Process with 0 threads and can neither be killed nor be a user's work, so they are ignored."""
+    out = ps(f"(Get-CimInstance Win32_Process -Filter \"Name='{image}'\" | Where-Object {{ $_.ThreadCount -gt 0 }}).ProcessId")
+    return [int(x) for x in out.split()]
 
 
 def kill_new(image, t0, before=()):
